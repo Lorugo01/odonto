@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dentista
+      POSTGRES_PASSWORD: dentista
+      POSTGRES_DB: dentista
+    ports:
+      - "5433:5432"
+    volumes:
+      - dentista_pg:/var/lib/postgresql/data
+
+volumes:
+  dentista_pg:
