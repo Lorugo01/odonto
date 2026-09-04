@@ -7,6 +7,8 @@ import { validationExceptionFactory } from "./common/pipes/validation-exception.
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: false });
+  // Fecha HTTP + Prisma ao receber SIGINT/SIGTERM (evita porta órfã no Windows)
+  app.enableShutdownHooks();
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
   const isProduction = process.env.NODE_ENV === "production";
   const allowedOrigins = (process.env.CORS_ORIGINS ?? "")
@@ -27,7 +29,19 @@ async function bootstrap() {
       exceptionFactory: validationExceptionFactory,
     }),
   );
-  await app.listen(Number(process.env.PORT ?? 3000));
+
+  const port = Number(process.env.PORT ?? 3000);
+  await app.listen(port);
+
+  const shutdown = async (_signal: string) => {
+    try {
+      await app.close();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 bootstrap();

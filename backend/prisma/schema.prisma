@@ -48,6 +48,7 @@ model Clinic {
   appointments    Appointment[]
   documents       Document[]
   clinicalNotes   ClinicalNote[]
+  patientCharts   PatientChart[]
   auditLogs       AuditLog[]
 }
 
@@ -109,6 +110,45 @@ model PatientProfile {
   appointments   Appointment[]
   documents      Document[]
   clinicalNotes  ClinicalNote[]
+  charts         PatientChart[]
+}
+
+/// Ficha clínica por clínica (dados pessoais, anamnese, odontograma, plano)
+model PatientChart {
+  id               String   @id @default(cuid())
+  clinicId         String
+  patientProfileId String
+  chartNumber      String?
+  maritalStatus    String?
+  phoneHome        String?
+  phoneWork        String?
+  phoneMobile      String?
+  address          String?
+  insurance        String?
+  referredBy       String?
+  allergyAntibiotic Boolean @default(false)
+  allergyAnesthetic  Boolean @default(false)
+  allergyDetails     String?
+  medSensitivity     Boolean?
+  medSensitivityDetails String?
+  highBloodPressure  Boolean?
+  highBloodPressureDetails String?
+  takingMedication   Boolean?
+  takingMedicationDetails String?
+  healthProblems     Boolean?
+  healthProblemsDetails String?
+  observations       String?
+  /// Mapa dente FDI -> status (ex: {"18":"cárie","11":"restauração"})
+  odontogram         Json     @default("{}")
+  treatmentPlan      String?
+  planDate           DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  clinic             Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient            PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, patientProfileId])
+  @@index([clinicId])
 }
 
 model ClinicPatient {

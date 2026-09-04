@@ -2,6 +2,8 @@
   "name": "dentista",
   "private": true,
   "scripts": {
+    "dev": "node scripts/dev.js",
+    "free:ports": "node scripts/free-port.js 3000 5173",
     "dev:backend": "npm run start:dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "db:setup": "npm run db:setup --prefix backend"
