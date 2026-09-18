@@ -1,15 +1,17 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Loader2, Lock, Mail, Stethoscope } from "lucide-react";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/auth";
 import { Usuario, isStaff } from "../types";
 import { btn } from "../utils/buttonStyles";
+import { ErrorState, Field, Input } from "../components/ui";
 
 export default function Login() {
   const navigate = useNavigate();
   const setCredentials = useAuthStore((s) => s.setCredentials);
-  const [email, setEmail] = useState("admin@sorriso.com");
-  const [senha, setSenha] = useState("senha123");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -18,9 +20,12 @@ export default function Login() {
     setError(null);
     setLoading(true);
     try {
-      const { data } = await api.post<{ token: string; user: Usuario }>("/auth/login", { email, senha });
+      const { data } = await api.post<{ token: string; user: Usuario }>("/auth/login", {
+        email,
+        senha,
+      });
       setCredentials(data);
-      navigate(isStaff(data.user.role) ? "/dashboard" : "/inicio", { replace: true });
+      navigate(isStaff(data.user) ? "/dashboard" : "/inicio", { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Falha no login");
     } finally {
@@ -29,39 +34,76 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral p-4">
-      <div className="w-full max-w-md bg-neutral/80 border border-white/10 rounded-xl p-8 shadow-xl">
-        <h1 className="text-2xl font-bold text-center">Dentista</h1>
-        <p className="text-white/60 text-center mb-6 text-sm">Acesse com suas credenciais</p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <label className="text-sm text-white/70">
-            E-mail
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-md border border-white/10 bg-neutral/60 px-3 py-2 focus:border-primary focus:outline-none"
-              required
-            />
-          </label>
-          <label className="text-sm text-white/70">
-            Senha
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              className="mt-1 w-full rounded-md border border-white/10 bg-neutral/60 px-3 py-2 focus:border-primary focus:outline-none"
-              required
-            />
-          </label>
-          {error ? <span className="text-danger text-sm">{error}</span> : null}
+    <div className="flex min-h-screen items-center justify-center bg-canvas p-4">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex flex-col items-center gap-2">
+          <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary text-white shadow-card">
+            <Stethoscope size={24} />
+          </span>
+          <h1 className="text-2xl font-bold text-ink">Dentista</h1>
+          <p className="text-sm text-ink-muted">Acesse com suas credenciais</p>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-6 shadow-card sm:p-8"
+        >
+          <Field label="E-mail">
+            <div className="relative">
+              <Mail
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft"
+              />
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="pl-9"
+                placeholder="voce@clinica.com"
+                autoComplete="email"
+                required
+              />
+            </div>
+          </Field>
+
+          <Field label="Senha">
+            <div className="relative">
+              <Lock
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft"
+              />
+              <Input
+                type="password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                className="pl-9"
+                placeholder="••••••••"
+                autoComplete="current-password"
+                required
+              />
+            </div>
+          </Field>
+
+          {error ? <ErrorState message={error} /> : null}
+
           <button type="submit" disabled={loading} className={`${btn.primaryLg} w-full`}>
-            {loading ? "Entrando..." : "Entrar"}
+            {loading ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Entrando...
+              </>
+            ) : (
+              "Entrar"
+            )}
           </button>
+
+          <Link
+            to="/cadastro"
+            className="text-center text-sm font-medium text-primary hover:text-primary-hover"
+          >
+            Sou paciente — criar conta
+          </Link>
         </form>
-        <Link to="/cadastro" className="block text-center text-primary text-sm mt-4">
-          Sou paciente — criar conta
-        </Link>
       </div>
     </div>
   );

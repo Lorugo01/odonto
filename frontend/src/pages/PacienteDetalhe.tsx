@@ -1,9 +1,35 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  CalendarDays,
+  ClipboardList,
+  FileText,
+  Loader2,
+  NotebookPen,
+  Save,
+  Smile,
+} from "lucide-react";
 import { api } from "../services/api";
-import { statusLabel } from "../types";
+import { canSeeClinicalNotes } from "../types";
+import { useAuthStore } from "../store/auth";
 import { btn } from "../utils/buttonStyles";
 import { Odontogram, OdontogramData } from "../components/paciente/odontogram";
+import { ClinicalNotes } from "../components/paciente/ClinicalNotes";
+import { PatientDocuments } from "../components/paciente/documentos/PatientDocuments";
+import {
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorState,
+  Field,
+  Input,
+  SkeletonRows,
+  StatusBadge,
+  Textarea,
+  YesNo,
+  useToast,
+} from "../components/ui";
 
 type Chart = {
   name: string;
@@ -34,6 +60,16 @@ type Chart = {
   planDate: string | null;
 };
 
+type PatientAppointment = {
+  id: string;
+  startsAt: string;
+  status: string;
+  professional: { name: string };
+  service: { name: string };
+};
+
+type Tab = "ficha" | "evolucao" | "documentos" | "historico";
+
 const emptyChart: Chart = {
   name: "",
   email: "",
@@ -63,242 +99,225 @@ const emptyChart: Chart = {
   planDate: null,
 };
 
-function Field({
-  label,
-  children,
-  className = "",
-}: {
-  label: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <label className={`flex flex-col gap-1 text-sm ${className}`}>
-      <span className="text-white/55 text-xs">{label}</span>
-      {children}
-    </label>
-  );
-}
+const ANAMNESIS_ITEMS = [
+  ["medSensitivity", "medSensitivityDetails", "Sensibilidade a algum medicamento?"],
+  ["highBloodPressure", "highBloodPressureDetails", "Sua pressão sanguínea é alta?"],
+  ["takingMedication", "takingMedicationDetails", "Está tomando algum medicamento?"],
+  ["healthProblems", "healthProblemsDetails", "Tem algum problema de saúde? Qual?"],
+] as const;
 
-const inputCls =
-  "w-full rounded-md border border-white/10 bg-neutral/60 px-3 py-2 text-sm focus:border-primary focus:outline-none";
-
-function YesNo({
-  value,
-  onChange,
-}: {
-  value: boolean | null;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex gap-3 text-sm">
-      <label className="inline-flex items-center gap-1.5 cursor-pointer">
-        <input type="radio" checked={value === true} onChange={() => onChange(true)} />
-        Sim
-      </label>
-      <label className="inline-flex items-center gap-1.5 cursor-pointer">
-        <input type="radio" checked={value === false} onChange={() => onChange(false)} />
-        Não
-      </label>
-    </div>
-  );
-}
+const dateTimeFmt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 export default function PacienteDetalhe() {
   const { id } = useParams();
+  const toast = useToast();
+  const user = useAuthStore((s) => s.user);
+  const showNotes = canSeeClinicalNotes(user);
+
   const [chart, setChart] = useState<Chart>(emptyChart);
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [documents, setDocuments] = useState<any[]>([]);
-  const [docTitle, setDocTitle] = useState("");
+  const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"ficha" | "historico">("ficha");
+  const [tab, setTab] = useState<Tab>("ficha");
+
+  const tabs = useMemo(
+    () => [
+      { id: "ficha" as Tab, label: "Ficha clínica", icon: <ClipboardList size={15} /> },
+      ...(showNotes
+        ? [{ id: "evolucao" as Tab, label: "Evolução", icon: <NotebookPen size={15} /> }]
+        : []),
+      { id: "documentos" as Tab, label: "Documentos", icon: <FileText size={15} /> },
+      { id: "historico" as Tab, label: "Histórico", icon: <CalendarDays size={15} /> },
+    ],
+    [showNotes],
+  );
 
   async function load() {
-    const res = await api.get(`/patients/${id}`);
+    const res = await api.get<{
+      chart: Chart;
+      appointments: PatientAppointment[];
+    }>(`/patients/${id}`);
     setChart({ ...emptyChart, ...res.data.chart, odontogram: res.data.chart?.odontogram ?? {} });
     setAppointments(res.data.appointments ?? []);
-    setDocuments(res.data.documents ?? []);
   }
 
   useEffect(() => {
-    void load().catch((e) => setError(e.message));
+    setLoading(true);
+    load()
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Erro ao carregar ficha"))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setMsg("");
-    setError("");
     try {
-      const { data } = await api.patch(`/patients/${id}/chart`, chart);
+      const { data } = await api.patch<Chart>(`/patients/${id}/chart`, chart);
       setChart({ ...emptyChart, ...data, odontogram: data.odontogram ?? {} });
-      setMsg("Ficha salva.");
+      toast.success("Ficha salva.");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erro ao salvar");
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar a ficha");
     } finally {
       setSaving(false);
     }
-  }
-
-  async function addDoc(e: FormEvent) {
-    e.preventDefault();
-    await api.post("/documents", { patientProfileId: id, title: docTitle, type: "anotacao" });
-    setDocTitle("");
-    await load();
   }
 
   function set<K extends keyof Chart>(key: K, value: Chart[K]) {
     setChart((c) => ({ ...c, [key]: value }));
   }
 
-  if (error && !chart.name) return <p className="text-danger">{error}</p>;
-  if (!chart.name && !error) return <p className="text-white/50">Carregando ficha...</p>;
+  if (loading) return <SkeletonRows rows={6} />;
+  if (error && !chart.name) return <ErrorState message={error} />;
 
   return (
-    <div className="flex flex-col gap-4 max-w-5xl">
+    <div className="flex max-w-5xl flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link to="/pacientes" className="text-sm text-primary">
-          ← Pacientes
+        <Link
+          to="/pacientes"
+          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-hover"
+        >
+          <ArrowLeft size={15} />
+          Pacientes
         </Link>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className={tab === "ficha" ? btn.primary : btn.secondary}
-            onClick={() => setTab("ficha")}
-          >
-            Ficha clínica
-          </button>
-          <button
-            type="button"
-            className={tab === "historico" ? btn.primary : btn.secondary}
-            onClick={() => setTab("historico")}
-          >
-            Histórico
-          </button>
-        </div>
+        <nav className="flex flex-wrap gap-1 rounded-lg border border-line bg-surface p-1 shadow-card">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              aria-pressed={tab === t.id}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                tab === t.id
+                  ? "bg-primary text-white"
+                  : "text-ink-muted hover:bg-canvas hover:text-ink"
+              }`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
+      {tab === "evolucao" && showNotes && id ? (
+        <ClinicalNotes patientProfileId={id} appointments={appointments} />
+      ) : null}
+
+      {tab === "documentos" && id ? (
+        <PatientDocuments patientProfileId={id} appointments={appointments} />
+      ) : null}
+
       {tab === "historico" ? (
-        <div className="flex flex-col gap-4">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-            <h3 className="font-semibold mb-2">Consultas</h3>
-            {appointments.length === 0 ? <p className="text-white/50 text-sm">Sem consultas.</p> : null}
-            {appointments.map((a) => (
-              <p key={a.id} className="text-sm py-1">
-                {new Date(a.startsAt).toLocaleString("pt-BR")} · {a.service.name} · {statusLabel[a.status]}
-              </p>
-            ))}
-          </div>
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-            <h3 className="font-semibold mb-2">Documentos</h3>
-            {documents.map((d) => (
-              <p key={d.id} className="text-sm py-1">
-                {d.title} ({d.type})
-              </p>
-            ))}
-            <form onSubmit={addDoc} className="flex flex-col sm:flex-row gap-2 mt-3">
-              <input
-                className={inputCls}
-                value={docTitle}
-                onChange={(e) => setDocTitle(e.target.value)}
-                placeholder="Novo documento"
-              />
-              <button className={btn.primary}>Adicionar</button>
-            </form>
-          </div>
-        </div>
-      ) : (
+        <Card>
+          <CardHeader
+            title="Consultas"
+            subtitle={`${appointments.length} registro(s)`}
+            icon={<CalendarDays size={18} />}
+          />
+          {appointments.length === 0 ? (
+            <EmptyState icon={<CalendarDays size={26} />} title="Sem consultas" />
+          ) : (
+            <ul className="divide-y divide-line">
+              {appointments.map((a) => (
+                <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
+                  <span className="font-medium tabular-nums text-ink">
+                    {dateTimeFmt.format(new Date(a.startsAt))}
+                  </span>
+                  <span className="text-ink-muted">{a.service.name}</span>
+                  <span className="text-ink-soft">{a.professional.name}</span>
+                  <StatusBadge status={a.status} className="ml-auto" />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      ) : null}
+
+      {tab === "ficha" ? (
         <form onSubmit={save} className="flex flex-col gap-4">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6">
-            <div className="text-center mb-4 relative">
-              <p className="text-lg font-bold">Ficha do paciente</p>
-              <p className="text-white/50 text-sm">Cirurgião-Dentista · Clínica</p>
-              <div className="absolute right-0 top-0 text-sm text-white/60">
-                Nº{" "}
+          <Card>
+            <div className="relative mb-4 text-center">
+              <p className="text-lg font-bold text-ink">Ficha do paciente</p>
+              <p className="text-sm text-ink-muted">Cirurgião-Dentista · Clínica</p>
+              <div className="mt-2 inline-flex items-center gap-1 text-sm text-ink-muted sm:absolute sm:right-0 sm:top-0 sm:mt-0">
+                Nº
                 <input
-                  className="w-20 border-b border-white/30 bg-transparent px-1 text-center"
+                  className="w-20 border-b border-line bg-transparent px-1 text-center text-ink focus:border-primary focus:outline-none"
                   value={chart.chartNumber ?? ""}
                   onChange={(e) => set("chartNumber", e.target.value || null)}
+                  aria-label="Número da ficha"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Nome" className="sm:col-span-2 lg:col-span-3">
-                <input className={inputCls} value={chart.name} onChange={(e) => set("name", e.target.value)} required />
+                <Input value={chart.name} onChange={(e) => set("name", e.target.value)} required />
               </Field>
               <Field label="Data de nasc.">
-                <input
+                <Input
                   type="date"
-                  className={inputCls}
                   value={chart.birthDate ?? ""}
                   onChange={(e) => set("birthDate", e.target.value || null)}
                 />
               </Field>
               <Field label="Est. civil">
-                <input
-                  className={inputCls}
+                <Input
                   value={chart.maritalStatus ?? ""}
                   onChange={(e) => set("maritalStatus", e.target.value || null)}
                 />
               </Field>
               <Field label="Tel. residencial">
-                <input
-                  className={inputCls}
+                <Input
                   value={chart.phoneHome ?? ""}
                   onChange={(e) => set("phoneHome", e.target.value || null)}
                 />
               </Field>
               <Field label="Tel. com.">
-                <input
-                  className={inputCls}
+                <Input
                   value={chart.phoneWork ?? ""}
                   onChange={(e) => set("phoneWork", e.target.value || null)}
                 />
               </Field>
               <Field label="Cel.">
-                <input
-                  className={inputCls}
+                <Input
                   value={chart.phoneMobile ?? ""}
                   onChange={(e) => set("phoneMobile", e.target.value || null)}
                 />
               </Field>
               <Field label="E-mail">
-                <input className={inputCls} value={chart.email} disabled />
+                <Input value={chart.email} disabled />
               </Field>
               <Field label="Endereço" className="sm:col-span-2 lg:col-span-3">
-                <input
-                  className={inputCls}
+                <Input
                   value={chart.address ?? ""}
                   onChange={(e) => set("address", e.target.value || null)}
                 />
               </Field>
               <Field label="Convênio">
-                <input
-                  className={inputCls}
+                <Input
                   value={chart.insurance ?? ""}
                   onChange={(e) => set("insurance", e.target.value || null)}
                 />
               </Field>
               <Field label="Indicado por" className="sm:col-span-2">
-                <input
-                  className={inputCls}
+                <Input
                   value={chart.referredBy ?? ""}
                   onChange={(e) => set("referredBy", e.target.value || null)}
                 />
               </Field>
             </div>
-          </div>
+          </Card>
 
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6 space-y-4">
-            <h3 className="font-semibold">Anamnese</h3>
+          <Card className="space-y-4">
+            <CardHeader title="Anamnese" icon={<ClipboardList size={18} />} className="mb-0" />
 
             <div className="space-y-2">
-              <p className="text-sm text-white/70">Alergia</p>
+              <p className="text-sm font-medium text-ink">Alergia</p>
               <div className="flex flex-wrap gap-4 text-sm">
-                <label className="inline-flex items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 text-ink">
                   <input
                     type="checkbox"
                     checked={chart.allergyAntibiotic}
@@ -306,7 +325,7 @@ export default function PacienteDetalhe() {
                   />
                   Antibiótico
                 </label>
-                <label className="inline-flex items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 text-ink">
                   <input
                     type="checkbox"
                     checked={chart.allergyAnesthetic}
@@ -315,27 +334,18 @@ export default function PacienteDetalhe() {
                   Anestésico
                 </label>
               </div>
-              <input
-                className={inputCls}
+              <Input
                 placeholder="Qual(ais)?"
                 value={chart.allergyDetails ?? ""}
                 onChange={(e) => set("allergyDetails", e.target.value || null)}
               />
             </div>
 
-            {(
-              [
-                ["medSensitivity", "medSensitivityDetails", "Sensibilidade a algum medicamento?"],
-                ["highBloodPressure", "highBloodPressureDetails", "Sua pressão sanguínea é alta?"],
-                ["takingMedication", "takingMedicationDetails", "Está tomando algum medicamento?"],
-                ["healthProblems", "healthProblemsDetails", "Tem algum problema de saúde? Qual?"],
-              ] as const
-            ).map(([boolKey, detailKey, label]) => (
+            {ANAMNESIS_ITEMS.map(([boolKey, detailKey, label]) => (
               <div key={boolKey} className="space-y-2">
-                <p className="text-sm text-white/70">{label}</p>
-                <YesNo value={chart[boolKey]} onChange={(v) => set(boolKey, v)} />
-                <input
-                  className={inputCls}
+                <p className="text-sm font-medium text-ink">{label}</p>
+                <YesNo name={boolKey} value={chart[boolKey]} onChange={(v) => set(boolKey, v)} />
+                <Input
                   placeholder="Detalhes"
                   value={chart[detailKey] ?? ""}
                   onChange={(e) => set(detailKey, e.target.value || null)}
@@ -344,58 +354,65 @@ export default function PacienteDetalhe() {
             ))}
 
             <Field label="Observações">
-              <textarea
-                className={`${inputCls} min-h-[80px]`}
+              <Textarea
+                className="min-h-[80px]"
                 value={chart.observations ?? ""}
                 onChange={(e) => set("observations", e.target.value || null)}
               />
             </Field>
-          </div>
+          </Card>
 
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6 space-y-3">
-            <div>
-              <h3 className="font-semibold">Odontograma</h3>
-              <p className="text-xs text-white/45 mt-1">
-                Numeração FDI · desenho anatômico (react-odontogram) + faces no painel. Salve a ficha para
-              persistir.
-              </p>
-            </div>
+          <Card className="space-y-3">
+            <CardHeader
+              title="Odontograma"
+              subtitle="Numeração FDI. Marque status por dente ou por face e salve a ficha para persistir."
+              icon={<Smile size={18} />}
+              className="mb-0"
+            />
             <Odontogram
               value={chart.odontogram}
               onChange={(odontogram) => set("odontogram", odontogram)}
             />
-          </div>
+          </Card>
 
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6 space-y-3">
-            <h3 className="font-semibold text-center tracking-wide">PLANO DE TRATAMENTO</h3>
-            <textarea
-              className={`${inputCls} min-h-[160px] font-mono text-sm leading-7`}
+          <Card className="space-y-3">
+            <h3 className="text-center font-semibold tracking-wide text-ink">
+              PLANO DE TRATAMENTO
+            </h3>
+            <Textarea
+              className="min-h-[160px] font-mono leading-7"
               placeholder="Descreva o plano de tratamento..."
               value={chart.treatmentPlan ?? ""}
               onChange={(e) => set("treatmentPlan", e.target.value || null)}
             />
             <div className="flex justify-end">
               <Field label="Data" className="w-44">
-                <input
+                <Input
                   type="date"
-                  className={inputCls}
                   value={chart.planDate ?? ""}
                   onChange={(e) => set("planDate", e.target.value || null)}
                 />
               </Field>
             </div>
-          </div>
+          </Card>
 
-          {msg ? <p className="text-primary text-sm">{msg}</p> : null}
-          {error ? <p className="text-danger text-sm">{error}</p> : null}
-
-          <div className="flex justify-end gap-2 sticky bottom-20 md:bottom-4 bg-neutral/90 py-3 border-t border-white/5">
+          <div className="sticky bottom-20 flex justify-end gap-2 border-t border-line bg-canvas/90 py-3 backdrop-blur md:bottom-4">
             <button type="submit" className={btn.primaryLg} disabled={saving}>
-              {saving ? "Salvando..." : "Salvar ficha"}
+              {saving ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <Save size={16} />
+                  Salvar ficha
+                </>
+              )}
             </button>
           </div>
         </form>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -4,10 +4,10 @@ import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { AuthUser } from "../../../common/decorators/current-user.decorator";
+import { primaryRole } from "../../../common/utils/permissions.util";
 
 type JwtPayload = {
   sub: string;
-  role: string;
   clinicId: string;
 };
 
@@ -45,12 +45,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException("Acesso não autorizado");
     }
 
+    // Papéis são acumuláveis: carrega todos os vínculos do usuário na clínica
+    // ativa (ex.: administrador que também atende como dentista).
+    const clinicId = membership?.clinicId ?? payload.clinicId;
+    const roles = user.roles.filter((r) => r.clinicId === clinicId).map((r) => r.role);
+
     return {
       userId: user.id,
       email: user.email,
       name: user.name,
-      role: membership?.role ?? payload.role,
-      clinicId: membership?.clinicId ?? payload.clinicId,
+      role: primaryRole(roles),
+      roles,
+      clinicId,
       clinicName: membership?.clinic.name ?? "",
       isPlatformAdmin: user.isPlatformAdmin,
     };

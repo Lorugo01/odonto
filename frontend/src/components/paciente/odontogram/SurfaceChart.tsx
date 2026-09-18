@@ -72,8 +72,8 @@ export function SurfaceChart({ tooth, state, onSurfaceClick, size = "md" }: Prop
             <path
               key={zone}
               d={ZONES[zone]}
-              fill={marked ? statusColor(marked) : "rgba(255,255,255,0.08)"}
-              stroke="rgba(255,255,255,0.4)"
+              fill={marked ? statusColor(marked) : "rgba(15,23,42,0.06)"}
+              stroke="rgba(15,23,42,0.35)"
               strokeWidth={0.9}
               className="cursor-pointer transition-opacity hover:opacity-75"
               onClick={(e) => {

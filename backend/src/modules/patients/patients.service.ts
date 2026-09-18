@@ -3,6 +3,7 @@ import * as bcrypt from "bcrypt";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuthUser } from "../../common/decorators/current-user.decorator";
+import { isPatientOnly } from "../../common/utils/permissions.util";
 import { CreatePatientDto, UpdatePatientChartDto } from "./dto/patients.dto";
 import { sanitizeOdontogram } from "./odontogram.sanitizer";
 
@@ -11,7 +12,7 @@ export class PatientsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(user: AuthUser) {
-    if (user.role === "PATIENT") throw new ForbiddenException();
+    if (isPatientOnly(user)) throw new ForbiddenException();
     const links = await this.prisma.clinicPatient.findMany({
       where: { clinicId: user.clinicId, deletedAt: null, status: "ACTIVE" },
       include: { patient: { include: { user: true } } },
@@ -57,7 +58,7 @@ export class PatientsService {
   }
 
   async updateChart(user: AuthUser, id: string, dto: UpdatePatientChartDto) {
-    if (user.role === "PATIENT") throw new ForbiddenException();
+    if (isPatientOnly(user)) throw new ForbiddenException();
     const profile = await this.assertPatientAccess(user, id);
 
     if (dto.name && dto.name.trim().length >= 2) {
@@ -131,7 +132,7 @@ export class PatientsService {
   }
 
   async create(user: AuthUser, dto: CreatePatientDto) {
-    if (user.role === "PATIENT") throw new ForbiddenException();
+    if (isPatientOnly(user)) throw new ForbiddenException();
     const email = dto.email.toLowerCase();
     const passwordHash = await bcrypt.hash(dto.senha ?? "senha123", 10);
     const existing = await this.prisma.user.findUnique({ where: { email } });
@@ -179,7 +180,7 @@ export class PatientsService {
       include: { user: true },
     });
     if (!profile) throw new NotFoundException();
-    if (user.role === "PATIENT" && profile.userId !== user.userId) {
+    if (isPatientOnly(user) && profile.userId !== user.userId) {
       throw new ForbiddenException();
     }
     const link = await this.prisma.clinicPatient.findUnique({

@@ -1,5 +1,6 @@
-import { btn } from "../../utils/buttonStyles";
+import { LogOut, Menu } from "lucide-react";
 import { useAuthStore } from "../../store/auth";
+import { roleLabel } from "../../types";
 
 export function Header({
   title,
@@ -12,29 +13,53 @@ export function Header({
 }) {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const roles = user?.roles ?? [];
+  const initials = (user?.name ?? "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join("");
+
   return (
-    <header className="border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2 min-w-0">
+    <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-surface/95 px-3 py-3 backdrop-blur sm:px-6 sm:py-4">
+      <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
-          className={`${btn.secondary} md:hidden shrink-0 px-3`}
+          className="shrink-0 rounded-lg border border-line p-2 text-ink-muted transition-colors hover:bg-canvas hover:text-ink md:hidden"
           onClick={onMenu}
           aria-label="Abrir menu"
         >
-          Menu
+          <Menu size={18} />
         </button>
         <div className="min-w-0">
-          <h1 className="text-lg sm:text-xl font-bold truncate">{title}</h1>
-          {subtitle ? <p className="text-white/50 text-xs sm:text-sm truncate">{subtitle}</p> : null}
+          <h1 className="truncate text-lg font-bold text-ink sm:text-xl">{title}</h1>
+          {subtitle ? (
+            <p className="truncate text-xs text-ink-muted sm:text-sm">{subtitle}</p>
+          ) : null}
         </div>
       </div>
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        <div className="text-right hidden sm:block">
-          <div className="text-sm font-semibold">{user?.name}</div>
-          <div className="text-xs text-white/50">{user?.clinicName}</div>
+
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <div className="hidden text-right sm:block">
+          <div className="text-sm font-semibold text-ink">{user?.name}</div>
+          <div className="text-xs text-ink-muted">
+            {user?.clinicName}
+            {/* Mostra todos os papéis: um admin pode também atender como dentista. */}
+            {roles.length > 0 ? ` · ${roles.map((r) => roleLabel[r] ?? r).join(" + ")}` : ""}
+          </div>
         </div>
-        <button className={btn.secondary} onClick={logout}>
-          Sair
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary-soft text-sm font-bold text-primary">
+          {initials || "?"}
+        </span>
+        <button
+          type="button"
+          className="rounded-lg border border-line p-2 text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
+          onClick={logout}
+          aria-label="Sair"
+          title="Sair"
+        >
+          <LogOut size={18} />
         </button>
       </div>
     </header>

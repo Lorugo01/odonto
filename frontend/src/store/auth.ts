@@ -2,6 +2,13 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Usuario } from "../types";
 
+/**
+ * A chave ganhou sufixo v2 porque `roles` deixou de ser a lista de vínculos e
+ * passou a ser a lista de papéis da clínica ativa. Sessões gravadas no formato
+ * antigo são ignoradas, evitando avaliar permissão com dados incompatíveis.
+ */
+const STORAGE_KEY = "dentista-auth-v2";
+
 interface AuthState {
   user: Usuario | null;
   token: string | null;
@@ -21,9 +28,9 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user }),
       logout: () => {
         set({ user: null, token: null });
-        localStorage.removeItem("dentista-auth");
+        localStorage.removeItem(STORAGE_KEY);
       },
     }),
-    { name: "dentista-auth" },
+    { name: STORAGE_KEY },
   ),
 );

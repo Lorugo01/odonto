@@ -25,11 +25,20 @@ export class DashboardController {
     });
     const todayCount = today.filter((a) => a.status !== "CANCELLED").length;
     const noShowCount = today.filter((a) => a.status === "NO_SHOW").length;
+    // Solicitação pendente já reserva o horário, então conta como ocupação.
+    const occupying: AppointmentStatus[] = ["REQUESTED", "SCHEDULED", "CONFIRMED", "COMPLETED"];
     const occupancyPercent = Math.min(
       100,
-      Math.round((today.filter((a) => ["SCHEDULED", "CONFIRMED", "COMPLETED"].includes(a.status)).length / 10) * 100),
+      Math.round((today.filter((a) => occupying.includes(a.status)).length / 10) * 100),
     );
-    const statuses: AppointmentStatus[] = ["SCHEDULED", "CONFIRMED", "CANCELLED", "COMPLETED", "NO_SHOW"];
+    const statuses: AppointmentStatus[] = [
+      "REQUESTED",
+      "SCHEDULED",
+      "CONFIRMED",
+      "CANCELLED",
+      "COMPLETED",
+      "NO_SHOW",
+    ];
     const byStatus = statuses.map((status) => ({
       status,
       count: today.filter((a) => a.status === status).length,
@@ -55,7 +64,8 @@ export class DashboardController {
         clinicId: user.clinicId,
         patientProfileId: profile.id,
         deletedAt: null,
-        status: { in: ["SCHEDULED", "CONFIRMED"] },
+        // Inclui a solicitação pendente: para o paciente, é o próximo compromisso.
+        status: { in: ["REQUESTED", "SCHEDULED", "CONFIRMED"] },
         startsAt: { gte: new Date() },
       },
       include: {

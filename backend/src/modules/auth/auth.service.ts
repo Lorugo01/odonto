@@ -7,6 +7,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
 import { PrismaService } from "../../prisma/prisma.service";
+import { primaryRole } from "../../common/utils/permissions.util";
 import { LoginDto, RegisterPatientDto } from "./dto/auth.dto";
 
 @Injectable()
@@ -62,11 +63,7 @@ export class AuthService {
 
   private async issue(userId: string) {
     const user = await this.buildUser(userId);
-    const token = await this.jwt.signAsync({
-      sub: userId,
-      role: user.role,
-      clinicId: user.clinicId,
-    });
+    const token = await this.jwt.signAsync({ sub: userId, clinicId: user.clinicId });
     return { token, user };
   }
 
@@ -76,17 +73,23 @@ export class AuthService {
       include: { roles: { include: { clinic: true } } },
     });
     if (!user) throw new UnauthorizedException();
+    // Clínica ativa: a primeira em que o usuário tem papel de equipe.
     const staff = user.roles.find((r) => r.role !== "PATIENT");
-    const primary = staff ?? user.roles[0];
+    const active = staff ?? user.roles[0];
+    const clinicId = active?.clinicId ?? "";
+    const roles = user.roles.filter((r) => r.clinicId === clinicId).map((r) => r.role);
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       isPlatformAdmin: user.isPlatformAdmin,
-      clinicId: primary?.clinicId ?? "",
-      clinicName: primary?.clinic.name ?? "",
-      role: primary?.role ?? "PATIENT",
-      roles: user.roles.map((r) => ({
+      clinicId,
+      clinicName: active?.clinic.name ?? "",
+      /** Papéis acumulados na clínica ativa; base das permissões no cliente. */
+      roles,
+      role: primaryRole(roles),
+      /** Todos os vínculos, para quando houver troca de clínica. */
+      memberships: user.roles.map((r) => ({
         clinicId: r.clinicId,
         clinicName: r.clinic.name,
         role: r.role,

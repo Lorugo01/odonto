@@ -1,8 +1,8 @@
-/* Ajustes leves sobre o CSS da react-odontogram para o tema Dentista */
+/* Ajustes leves sobre o CSS da react-odontogram para o tema claro Dentista */
 .odontogram-lib {
-  --dark-blue: #14b8a6;
+  --dark-blue: #0d9488;
   --base-blue: #5eead4;
-  --light-blue: #99f6e4;
+  --light-blue: #ccfbf1;
 }
 
 .odontogram-lib svg {
@@ -11,7 +11,7 @@
 }
 
 .odontogram-lib ul[aria-label="Tooth condition legend"] {
-  color: rgba(255, 255, 255, 0.55) !important;
+  color: #64748b !important;
   font-size: 12px !important;
   margin-top: 12px !important;
   justify-content: center;

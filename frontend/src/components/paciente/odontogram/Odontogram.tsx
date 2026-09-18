@@ -6,6 +6,7 @@ import {
 } from "react-odontogram";
 import "react-odontogram/style.css";
 import "./odontogram-lib.css";
+import { ConfirmDialog, Textarea } from "../../ui";
 import { SurfaceChart } from "./SurfaceChart";
 import {
   clearAll,
@@ -35,7 +36,7 @@ type Props = {
 };
 
 const chip = "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors";
-const chipIdle = "border-white/15 text-white/60 hover:border-white/30 hover:text-white";
+const chipIdle = "border-line bg-surface text-ink-muted hover:border-primary/40 hover:text-ink";
 
 function toothId(fdi: number | string) {
   return `teeth-${fdi}`;
@@ -80,6 +81,7 @@ export function Odontogram({ value, onChange }: Props) {
   const [dentition, setDentition] = useState<Dentition>("permanent");
   const [selected, setSelected] = useState<number | null>(null);
   const [layout, setLayout] = useState<"circle" | "square">("square");
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const activeStatus = statusById(tool)!;
   const findings = countFindings(data);
@@ -111,31 +113,66 @@ export function Odontogram({ value, onChange }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="sticky top-0 z-10 -mx-1 space-y-2 bg-neutral/95 px-1 py-2 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {TOOTH_STATUSES.map((status) => {
-            const active = tool === status.id;
-            return (
-              <button
-                key={status.id}
-                type="button"
-                onClick={() => setTool(status.id)}
-                className={`${chip} inline-flex items-center gap-1.5 ${
-                  active ? "border-transparent text-neutral" : chipIdle
-                }`}
-                style={active ? { backgroundColor: status.color } : undefined}
-              >
-                <span
-                  className="h-2.5 w-2.5 rounded-sm"
-                  style={{ backgroundColor: active ? "rgba(28,28,30,0.65)" : status.color }}
-                />
-                {status.label}
-              </button>
-            );
-          })}
+      <p className="text-xs text-ink-muted">
+        Clique no dente para selecionar
+        {activeStatus.scope === "tooth"
+          ? ` e aplicar "${activeStatus.label}".`
+          : "; marque as faces no painel abaixo."}
+      </p>
+
+      {/* Chart da biblioteca — silhuetas reais */}
+      <div className="odontogram-lib overflow-x-auto rounded-xl border border-line bg-canvas p-2 sm:p-4">
+        <LibOdontogram
+          key={`${dentition}-${layout}`}
+          theme="light"
+          notation="FDI"
+          layout={layout}
+          maxTeeth={maxTeeth}
+          singleSelect
+          defaultSelected={selected != null ? [toothId(selected)] : []}
+          onChange={onLibSelect}
+          teethConditions={conditions}
+          showLabels={conditions.length > 0}
+          showTooltip
+          colors={{
+            darkBlue: "#0D9488",
+            baseBlue: "#5EEAD4",
+            lightBlue: "#CCFBF1",
+          }}
+          className="mx-auto max-w-full"
+          styles={{ width: "100%", maxWidth: layout === "circle" ? 420 : 920 }}
+        />
+      </div>
+
+      {/* Ferramentas logo abaixo do desenho, junto do painel do dente */}
+      <div className="space-y-2 rounded-xl border border-line bg-surface p-3">
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-ink-muted">Ferramenta</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {TOOTH_STATUSES.map((status) => {
+              const active = tool === status.id;
+              return (
+                <button
+                  key={status.id}
+                  type="button"
+                  onClick={() => setTool(status.id)}
+                  className={`${chip} inline-flex items-center gap-1.5 ${
+                    active ? "border-transparent font-semibold text-white" : chipIdle
+                  }`}
+                  style={active ? { backgroundColor: status.color } : undefined}
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-sm"
+                    style={{ backgroundColor: active ? "rgba(255,255,255,0.85)" : status.color }}
+                  />
+                  {status.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2">
           <div className="flex flex-wrap gap-1">
             {(
               [
@@ -151,13 +188,13 @@ export function Odontogram({ value, onChange }: Props) {
                   setSelected(null);
                 }}
                 className={`${chip} ${
-                  dentition === id ? "border-primary bg-primary/15 text-primary" : chipIdle
+                  dentition === id ? "border-primary bg-primary-soft text-primary" : chipIdle
                 }`}
               >
                 {label}
               </button>
             ))}
-            <span className="mx-1 w-px self-stretch bg-white/10" />
+            <span className="mx-1 w-px self-stretch bg-line" />
             {(
               [
                 ["square", "Linear"],
@@ -169,7 +206,7 @@ export function Odontogram({ value, onChange }: Props) {
                 type="button"
                 onClick={() => setLayout(id)}
                 className={`${chip} ${
-                  layout === id ? "border-primary bg-primary/15 text-primary" : chipIdle
+                  layout === id ? "border-primary bg-primary-soft text-primary" : chipIdle
                 }`}
               >
                 {label}
@@ -178,7 +215,7 @@ export function Odontogram({ value, onChange }: Props) {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-white/45">
+            <span className="text-xs text-ink-muted">
               {findings === 0
                 ? "Nenhum achado"
                 : `${findings} ${findings === 1 ? "dente marcado" : "dentes marcados"}`}
@@ -186,11 +223,8 @@ export function Odontogram({ value, onChange }: Props) {
             {findings > 0 ? (
               <button
                 type="button"
-                onClick={() => {
-                  onChange(clearAll());
-                  setSelected(null);
-                }}
-                className={`${chip} border-danger/40 text-danger hover:bg-danger/10`}
+                onClick={() => setConfirmClear(true)}
+                className={`${chip} border-danger/40 bg-danger-soft text-danger hover:bg-danger/20`}
               >
                 Limpar tudo
               </button>
@@ -199,45 +233,13 @@ export function Odontogram({ value, onChange }: Props) {
         </div>
       </div>
 
-      <p className="text-xs text-white/45">
-        Desenho anatômico via <span className="text-white/70">react-odontogram</span>. Clique no
-        dente para selecionar
-        {activeStatus.scope === "tooth"
-          ? ` e aplicar "${activeStatus.label}".`
-          : "; marque as faces no painel abaixo."}
-      </p>
-
-      {/* Chart da biblioteca — silhuetas reais */}
-      <div className="odontogram-lib overflow-x-auto rounded-xl border border-white/10 bg-[#141416] p-2 sm:p-4">
-        <LibOdontogram
-          key={`${dentition}-${layout}`}
-          theme="dark"
-          notation="FDI"
-          layout={layout}
-          maxTeeth={maxTeeth}
-          singleSelect
-          defaultSelected={selected != null ? [toothId(selected)] : []}
-          onChange={onLibSelect}
-          teethConditions={conditions}
-          showLabels={conditions.length > 0}
-          showTooltip
-          colors={{
-            darkBlue: "#14B8A6",
-            baseBlue: "#5EEAD4",
-            lightBlue: "#99F6E4",
-          }}
-          className="mx-auto max-w-full"
-          styles={{ width: "100%", maxWidth: layout === "circle" ? 420 : 920 }}
-        />
-      </div>
-
       {selected && selectedState ? (
-        <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+        <div className="rounded-xl border border-line bg-canvas p-3 sm:p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-sm font-semibold">
+            <h4 className="text-sm font-semibold text-ink">
               Dente {selected}
               {selectedState.status ? (
-                <span className="ml-2 text-xs font-normal text-white/55">
+                <span className="ml-2 text-xs font-normal text-ink-muted">
                   {statusById(selectedState.status)?.label}
                 </span>
               ) : null}
@@ -246,7 +248,7 @@ export function Odontogram({ value, onChange }: Props) {
               <button
                 type="button"
                 onClick={() => onChange(clearTooth(data, selected))}
-                className={`${chip} border-white/15 text-white/60 hover:text-white`}
+                className={`${chip} ${chipIdle}`}
               >
                 Limpar dente
               </button>
@@ -258,7 +260,7 @@ export function Odontogram({ value, onChange }: Props) {
 
           <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
             <div className="flex flex-col items-center gap-2">
-              <p className="text-xs text-white/45">Faces</p>
+              <p className="text-xs text-ink-muted">Faces</p>
               <SurfaceChart
                 tooth={selected}
                 state={selectedState}
@@ -269,7 +271,7 @@ export function Odontogram({ value, onChange }: Props) {
 
             <div className="space-y-3">
               <div>
-                <p className="mb-1.5 text-xs text-white/45">Marcar face com ferramenta ativa</p>
+                <p className="mb-1.5 text-xs text-ink-muted">Marcar face com ferramenta ativa</p>
                 <div className="flex flex-wrap gap-1.5">
                   {surfacesFor(selected).map((surface) => {
                     const current = selectedState.surfaces?.[surface];
@@ -279,7 +281,9 @@ export function Odontogram({ value, onChange }: Props) {
                         key={surface}
                         type="button"
                         onClick={() => applySurface(selected, surface)}
-                        className={`${chip} ${status ? "border-transparent text-neutral" : chipIdle}`}
+                        className={`${chip} ${
+                          status ? "border-transparent font-semibold text-white" : chipIdle
+                        }`}
                         style={status ? { backgroundColor: status.color } : undefined}
                         title={SURFACE_LABELS[surface]}
                       >
@@ -292,7 +296,7 @@ export function Odontogram({ value, onChange }: Props) {
               </div>
 
               <div>
-                <p className="mb-1.5 text-xs text-white/45">Status do dente</p>
+                <p className="mb-1.5 text-xs text-ink-muted">Status do dente</p>
                 <div className="flex flex-wrap gap-1">
                   {TOOTH_STATUSES.filter((s) => s.scope !== "surface").map((status) => {
                     const active = selectedState.status === status.id;
@@ -301,7 +305,9 @@ export function Odontogram({ value, onChange }: Props) {
                         key={status.id}
                         type="button"
                         onClick={() => onChange(setToothStatus(data, selected, status.id))}
-                        className={`${chip} ${active ? "border-transparent text-neutral" : chipIdle}`}
+                        className={`${chip} ${
+                          active ? "border-transparent font-semibold text-white" : chipIdle
+                        }`}
                         style={active ? { backgroundColor: status.color } : undefined}
                       >
                         {status.label}
@@ -312,13 +318,12 @@ export function Odontogram({ value, onChange }: Props) {
               </div>
 
               <label className="block">
-                <span className="mb-1.5 block text-xs text-white/45">Observação</span>
-                <textarea
+                <span className="mb-1.5 block text-xs text-ink-muted">Observação</span>
+                <Textarea
                   rows={2}
                   maxLength={NOTE_MAX_LENGTH}
                   value={selectedState.note ?? ""}
                   onChange={(e) => onChange(setToothNote(data, selected, e.target.value))}
-                  className="w-full rounded-md border border-white/10 bg-neutral/60 px-3 py-2 text-sm focus:border-primary focus:outline-none"
                   placeholder="Ex.: sensibilidade ao frio"
                 />
               </label>
@@ -326,17 +331,23 @@ export function Odontogram({ value, onChange }: Props) {
           </div>
         </div>
       ) : (
-        <p className="text-xs text-white/35">Selecione um dente no desenho para marcar faces e status.</p>
+        <p className="text-xs text-ink-soft">
+          Selecione um dente no desenho para marcar faces e status.
+        </p>
       )}
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5 border-t border-white/10 pt-3 text-xs text-white/50">
-        {TOOTH_STATUSES.map((status) => (
-          <span key={status.id} className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: status.color }} />
-            {status.label}
-          </span>
-        ))}
-      </div>
+      <ConfirmDialog
+        open={confirmClear}
+        title="Limpar todo o odontograma?"
+        description={`${findings} dente(s) marcado(s) serão descartados. Salve a ficha para confirmar no prontuário.`}
+        confirmLabel="Limpar tudo"
+        onConfirm={() => {
+          onChange(clearAll());
+          setSelected(null);
+          setConfirmClear(false);
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
     </div>
   );
 }

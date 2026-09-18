@@ -14,6 +14,12 @@ export class AppointmentsController {
     return this.appointments.list(user, from, to);
   }
 
+  /** Fila de solicitações pendentes de aprovação. */
+  @Get("requests")
+  requests(@CurrentUser() user: AuthUser) {
+    return this.appointments.requests(user);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateAppointmentDto) {
     return this.appointments.create(user, dto);

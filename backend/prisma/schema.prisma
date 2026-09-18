@@ -20,6 +20,8 @@ enum UserClinicRoleType {
 }
 
 enum AppointmentStatus {
+  /// Pedido do paciente aguardando aprovação da clínica
+  REQUESTED
   SCHEDULED
   CONFIRMED
   CANCELLED
@@ -67,6 +69,8 @@ model User {
   professionals    Professional[]
   refreshTokens    RefreshToken[]
   auditLogs        AuditLog[]
+  authoredNotes    ClinicalNote[]
+  issuedDocuments  Document[]
 }
 
 model RefreshToken {
@@ -178,24 +182,51 @@ model Professional {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   appointments Appointment[]
+  services     ProfessionalService[]
 
   @@unique([clinicId, userId])
   @@index([clinicId])
 }
 
+/// Catálogo de tipos de tratamento da clínica, mantido pelo administrador.
 model Service {
   id          String   @id @default(cuid())
   clinicId    String
   name        String
+  /// Descrição padrão da clínica; o dentista pode escrever a própria
+  description String?
   durationMin Int
   priceCents  Int
+  /// Serviço arquivado deixa de ser oferecido, sem apagar o histórico
+  active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
 
-  appointments Appointment[]
+  appointments  Appointment[]
+  professionals ProfessionalService[]
 
   @@index([clinicId])
+  @@index([clinicId, active])
+}
+
+/// Tratamento que um dentista atende. Descrição, duração e preço em branco
+/// herdam o valor do catálogo da clínica.
+model ProfessionalService {
+  id             String       @id @default(cuid())
+  professionalId String
+  serviceId      String
+  description    String?
+  durationMin    Int?
+  priceCents     Int?
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  service        Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalId, serviceId])
+  @@index([serviceId])
 }
 
 model Appointment {
@@ -207,6 +238,8 @@ model Appointment {
   startsAt         DateTime
   endsAt           DateTime
   status           AppointmentStatus @default(SCHEDULED)
+  /// Motivo informado pelo paciente ao solicitar a consulta
+  patientNote      String?
   deletedAt        DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -214,38 +247,60 @@ model Appointment {
   professional     Professional      @relation(fields: [professionalId], references: [id], onDelete: Restrict)
   patient          PatientProfile    @relation(fields: [patientProfileId], references: [id], onDelete: Restrict)
   service          Service           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  clinicalNotes    ClinicalNote[]
 
   @@index([clinicId, startsAt])
   @@index([professionalId, startsAt])
   @@index([patientProfileId, startsAt])
 }
 
+/// Documento emitido para o paciente (receita, atestado, declaração, etc).
+/// `content` é o texto renderizado na emissão e não é reeditado.
 model Document {
   id               String         @id @default(cuid())
   clinicId         String
   patientProfileId String
+  /// Profissional que emitiu (identificação obrigatória em receita/atestado)
+  authorUserId     String?
   title            String
   type             String
+  /// Corpo final do documento, como foi impresso
+  content          String?
+  /// Campos informados na emissão + snapshot do timbre (clínica, CRO)
+  data             Json?
   url              String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   clinic           Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   patient          PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict)
+  author           User?          @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
 
   @@index([clinicId, patientProfileId])
+  @@index([clinicId, createdAt])
 }
 
+/// Evolução clínica (prontuário). Após assinada (`signedAt`) torna-se imutável;
+/// retificação é feita registrando uma nova evolução.
 model ClinicalNote {
   id               String         @id @default(cuid())
   clinicId         String
   patientProfileId String
+  /// Profissional responsável pelo registro (exigência de identificação no prontuário)
+  authorUserId     String?
+  /// Consulta à qual a evolução se refere, quando aplicável
+  appointmentId    String?
   body             String
+  signedAt         DateTime?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   clinic           Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   patient          PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict)
+  author           User?          @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  appointment      Appointment?   @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
   @@index([clinicId, patientProfileId])
+  @@index([clinicId, patientProfileId, createdAt])
+  @@index([appointmentId])
 }
 
 model AuditLog {

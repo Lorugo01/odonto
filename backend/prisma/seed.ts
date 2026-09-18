@@ -66,6 +66,14 @@ async function main() {
     update: {},
     create: { userId: admin.id, clinicId: clinic.id, role: "CLINIC_ADMIN" },
   });
+  // Papéis são acumuláveis: a administradora também atende como dentista.
+  await prisma.userClinicRole.upsert({
+    where: {
+      userId_clinicId_role: { userId: admin.id, clinicId: clinic.id, role: "DENTIST" },
+    },
+    update: {},
+    create: { userId: admin.id, clinicId: clinic.id, role: "DENTIST" },
+  });
   await prisma.userClinicRole.upsert({
     where: {
       userId_clinicId_role: { userId: dentistUser.id, clinicId: clinic.id, role: "DENTIST" },
@@ -99,32 +107,75 @@ async function main() {
     },
   });
 
-  let consult = await prisma.service.findFirst({
-    where: { clinicId: clinic.id, name: "Consulta de avaliação" },
+  const adminProfessional = await prisma.professional.upsert({
+    where: { clinicId_userId: { clinicId: clinic.id, userId: admin.id } },
+    update: {},
+    create: {
+      clinicId: clinic.id,
+      userId: admin.id,
+      cro: "CRO-SP 54321",
+      specialty: "Implantodontia",
+    },
   });
-  if (!consult) {
-    consult = await prisma.service.create({
-      data: {
-        clinicId: clinic.id,
-        name: "Consulta de avaliação",
-        durationMin: 30,
-        priceCents: 15000,
-      },
+
+  /** Cria ou atualiza um serviço do catálogo pelo nome. */
+  async function upsertService(data: {
+    name: string;
+    description: string;
+    durationMin: number;
+    priceCents: number;
+  }) {
+    const found = await prisma.service.findFirst({
+      where: { clinicId: clinic.id, name: data.name },
     });
+    if (found) {
+      return prisma.service.update({
+        where: { id: found.id },
+        data: { description: data.description },
+      });
+    }
+    return prisma.service.create({ data: { clinicId: clinic.id, ...data } });
   }
-  let cleaning = await prisma.service.findFirst({
-    where: { clinicId: clinic.id, name: "Limpeza" },
+
+  const consult = await upsertService({
+    name: "Consulta de avaliação",
+    description: "Exame clínico inicial, diagnóstico e plano de tratamento.",
+    durationMin: 30,
+    priceCents: 15000,
   });
-  if (!cleaning) {
-    cleaning = await prisma.service.create({
-      data: {
-        clinicId: clinic.id,
-        name: "Limpeza",
-        durationMin: 45,
-        priceCents: 22000,
-      },
-    });
+  const cleaning = await upsertService({
+    name: "Limpeza",
+    description: "Remoção de placa e tártaro, polimento e aplicação de flúor.",
+    durationMin: 45,
+    priceCents: 22000,
+  });
+
+  // Tratamentos atendidos por cada dentista, com ajustes próprios.
+  for (const [pro, services] of [
+    [professional.id, [consult.id, cleaning.id]],
+    [adminProfessional.id, [consult.id]],
+  ] as const) {
+    for (const serviceId of services) {
+      await prisma.professionalService.upsert({
+        where: { professionalId_serviceId: { professionalId: pro, serviceId } },
+        update: {},
+        create: { professionalId: pro, serviceId, active: true },
+      });
+    }
   }
+  await prisma.professionalService.update({
+    where: {
+      professionalId_serviceId: {
+        professionalId: adminProfessional.id,
+        serviceId: consult.id,
+      },
+    },
+    data: {
+      description: "Avaliação voltada a implantes, com análise de enxerto ósseo.",
+      durationMin: 60,
+      priceCents: 30000,
+    },
+  });
 
   const profile =
     (await prisma.patientProfile.findUnique({ where: { userId: patientUser.id } })) ??
@@ -179,7 +230,7 @@ async function main() {
   }
 
   console.log("Seed ok. Logins (senha: senha123):");
-  console.log("  admin@sorriso.com (admin clínica)");
+  console.log("  admin@sorriso.com (administradora + dentista)");
   console.log("  dentista@sorriso.com");
   console.log("  recepcao@sorriso.com");
   console.log("  paciente@email.com");
