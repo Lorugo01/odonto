@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuthUser } from "../../common/decorators/current-user.decorator";
 import { can, isPatientOnly } from "../../common/utils/permissions.util";
+import { loadClinicBranding, clinicSettingsDto } from "../clinic/clinic.util";
 import { CreateDocumentDto, IssueDocumentDto } from "./dto/documents.dto";
 import {
   DOCUMENT_TEMPLATES,
@@ -100,11 +101,8 @@ export class DocumentsService {
       if (!appointment) throw new NotFoundException("Consulta inválida para este paciente");
     }
 
-    const [clinic, professional, author] = await Promise.all([
-      this.prisma.clinic.findUniqueOrThrow({
-        where: { id: user.clinicId },
-        select: { name: true, timezone: true },
-      }),
+    const [branding, professional, author] = await Promise.all([
+      this.loadLetterheadClinic(user.clinicId),
       this.prisma.professional.findUnique({
         where: { clinicId_userId: { clinicId: user.clinicId, userId: user.userId } },
         select: { cro: true },
@@ -118,10 +116,10 @@ export class DocumentsService {
     const ctx: IssueContext = {
       patientName: profile.user.name,
       patientBirthDate: profile.birthDate,
-      clinicName: clinic.name,
+      clinicName: branding.name,
       authorName: author.name,
       authorCro: professional?.cro ?? null,
-      timezone: clinic.timezone,
+      timezone: branding.timezone,
     };
 
     const title = template.title(dto.fields, ctx);
@@ -139,7 +137,16 @@ export class DocumentsService {
           fields: dto.fields,
           appointmentId: dto.appointmentId ?? null,
           letterhead: {
-            clinicName: ctx.clinicName,
+            clinicName: branding.name,
+            legalName: branding.legalName,
+            cnpj: branding.cnpj,
+            phone: branding.phone,
+            email: branding.email,
+            address: branding.address,
+            website: branding.website,
+            logoUrl: branding.logoUrl,
+            primaryColor: branding.primaryColor,
+            documentFooter: branding.documentFooter,
             authorName: ctx.authorName,
             authorCro: ctx.authorCro,
             patientName: ctx.patientName,
@@ -150,6 +157,17 @@ export class DocumentsService {
     });
     await this.audit(user, "ISSUE", created.id);
     return this.mapDetail(created);
+  }
+
+  private async loadLetterheadClinic(clinicId: string) {
+    try {
+      const row = await loadClinicBranding(this.prisma, { id: clinicId });
+      if (row) return row;
+    } catch {
+      /* Migration ainda não aplicada: usa só o nome da clínica. */
+    }
+    const clinic = await this.prisma.clinic.findUniqueOrThrow({ where: { id: clinicId } });
+    return clinicSettingsDto(clinic);
   }
 
   /** Receita e atestado são atos clínicos: recepção não emite. */
@@ -210,6 +228,15 @@ export class DocumentsService {
       content: row.content,
       letterhead: {
         clinicName: (letterhead?.clinicName as string) ?? null,
+        legalName: (letterhead?.legalName as string) ?? null,
+        cnpj: (letterhead?.cnpj as string) ?? null,
+        phone: (letterhead?.phone as string) ?? null,
+        email: (letterhead?.email as string) ?? null,
+        address: (letterhead?.address as string) ?? null,
+        website: (letterhead?.website as string) ?? null,
+        logoUrl: (letterhead?.logoUrl as string) ?? null,
+        primaryColor: (letterhead?.primaryColor as string) ?? null,
+        documentFooter: (letterhead?.documentFooter as string) ?? null,
         authorName: (letterhead?.authorName as string) ?? row.author?.name ?? null,
         authorCro: (letterhead?.authorCro as string) ?? null,
       },

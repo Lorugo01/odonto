@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ProtectedRoute, RoleRoute } from "./components/ProtectedRoute";
 import { AppLayout } from "./components/layout/AppLayout";
+import { BrandTheme } from "./components/brand/BrandTheme";
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
 import { DefaultRedirect } from "./pages/DefaultRedirect";
@@ -10,9 +11,9 @@ import Pacientes from "./pages/Pacientes";
 import PacienteDetalhe from "./pages/PacienteDetalhe";
 import Documentos from "./pages/Documentos";
 import DocumentoImpressao from "./pages/DocumentoImpressao";
-import Servicos from "./pages/Servicos";
 import Tratamentos from "./pages/Tratamentos";
 import Equipe from "./pages/Equipe";
+import Configuracoes from "./pages/Configuracoes";
 import InicioPaciente from "./pages/InicioPaciente";
 import Consultas from "./pages/Consultas";
 import Agendar from "./pages/Agendar";
@@ -20,7 +21,9 @@ import MeusDocumentos from "./pages/MeusDocumentos";
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <BrandTheme />
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/cadastro" element={<Cadastro />} />
       <Route element={<ProtectedRoute />}>
@@ -34,16 +37,15 @@ export default function App() {
           <Route path="/pacientes/:id" element={<PacienteDetalhe />} />
           <Route path="/documentos" element={<Documentos />} />
 
-          {/* Catálogo e permissões: administração da clínica */}
+          {/* Catálogo, tratamentos e permissões */}
           <Route element={<RoleRoute allow={["CLINIC_ADMIN"]} />}>
-            <Route path="/servicos" element={<Servicos />} />
             <Route path="/equipe" element={<Equipe />} />
+            <Route path="/configuracoes" element={<Configuracoes />} />
           </Route>
-
-          {/* Cada dentista configura os tratamentos que atende */}
           <Route element={<RoleRoute allow={["CLINIC_ADMIN", "DENTIST"]} />}>
             <Route path="/tratamentos" element={<Tratamentos />} />
           </Route>
+          <Route path="/servicos" element={<Navigate to="/tratamentos" replace />} />
 
           <Route path="/inicio" element={<InicioPaciente />} />
           <Route path="/consultas" element={<Consultas />} />
@@ -53,5 +55,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

@@ -6,14 +6,15 @@ import {
   FileText,
   Home,
   LayoutDashboard,
+  Palette,
   Stethoscope,
-  Tags,
   UserCog,
   Users,
   X,
 } from "lucide-react";
 import { useAuthStore } from "../../store/auth";
 import { canManageCatalog, canManageTreatments, isStaff } from "../../types";
+import { ClinicMark } from "../brand/ClinicMark";
 
 type NavLinkItem = { to: string; label: string; icon: ReactNode };
 
@@ -44,22 +45,21 @@ export function useNavLinks() {
       links.push({ to: "/tratamentos", label: "Tratamentos", icon: <Stethoscope {...iconProps} /> });
     }
     if (canManageCatalog(user)) {
-      links.push(
-        { to: "/servicos", label: "Serviços", icon: <Tags {...iconProps} /> },
-        { to: "/equipe", label: "Equipe", icon: <UserCog {...iconProps} /> },
-      );
+      links.push({ to: "/equipe", label: "Equipe", icon: <UserCog {...iconProps} /> });
+      links.push({ to: "/configuracoes", label: "Clínica", icon: <Palette {...iconProps} /> });
     }
     return links;
   }, [user]);
 }
 
 function Brand() {
+  const user = useAuthStore((s) => s.user);
+  const name = user?.clinicName || user?.clinic?.name || "Clínica";
+  const logoUrl = user?.clinic?.logoUrl;
   return (
     <div className="mb-6 flex items-center gap-2">
-      <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-white">
-        <Stethoscope size={18} />
-      </span>
-      <span className="font-bold tracking-tight text-ink">Dentista</span>
+      <ClinicMark name={name} logoUrl={logoUrl} size={36} />
+      <span className="truncate font-bold tracking-tight text-ink">{name}</span>
     </div>
   );
 }

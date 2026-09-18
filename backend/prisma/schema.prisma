@@ -40,6 +40,19 @@ model Clinic {
   slug      String       @unique
   timezone  String       @default("America/Sao_Paulo")
   status    ClinicStatus @default(ACTIVE)
+  /// Razão social, usada no timbre dos documentos.
+  legalName String?
+  cnpj      String?
+  phone     String?
+  email     String?
+  address   String?
+  website   String?
+  /// URL http(s) ou data URL da logomarca.
+  logoUrl   String?
+  /// Cor da marca em hex (#RRGGBB). Botões, menu e acentos seguem este valor.
+  primaryColor String     @default("#0D9488")
+  /// Texto opcional no rodapé das folhas impressas.
+  documentFooter String?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -183,9 +196,25 @@ model Professional {
 
   appointments Appointment[]
   services     ProfessionalService[]
+  hours        ProfessionalHours[]
 
   @@unique([clinicId, userId])
   @@index([clinicId])
+}
+
+/// Expediente semanal do dentista. `weekday` segue o JS: 0 domingo … 6 sábado.
+model ProfessionalHours {
+  id             String       @id @default(cuid())
+  professionalId String
+  weekday        Int
+  enabled        Boolean      @default(true)
+  /// Minutos desde meia-noite (ex.: 8h = 480)
+  startMin       Int
+  endMin         Int
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalId, weekday])
+  @@index([professionalId])
 }
 
 /// Catálogo de tipos de tratamento da clínica, mantido pelo administrador.

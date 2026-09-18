@@ -12,13 +12,7 @@ import { resolveTreatment } from "../treatments/treatments.util";
 import { CreateAppointmentDto, PatchAppointmentDto } from "./dto/appointments.dto";
 
 /** Situações que ainda ocupam a agenda do profissional. */
-const BLOCKING_STATUSES: AppointmentStatus[] = [
-  "REQUESTED",
-  "SCHEDULED",
-  "CONFIRMED",
-  "COMPLETED",
-  "NO_SHOW",
-];
+const BLOCKING_STATUSES: AppointmentStatus[] = ["REQUESTED", "SCHEDULED", "CONFIRMED"];
 
 /** Transições permitidas; as situações finais não voltam atrás. */
 const ALLOWED_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
@@ -122,6 +116,22 @@ export class AppointmentsService {
       select: { id: true },
     });
     if (overlap) throw new BadRequestException("Horário indisponível");
+
+    // Paciente não pode ficar em dois consultórios no mesmo período.
+    const patientOverlap = await this.prisma.appointment.findFirst({
+      where: {
+        clinicId: user.clinicId,
+        patientProfileId: patientProfileId as string,
+        deletedAt: null,
+        status: { in: BLOCKING_STATUSES },
+        startsAt: { lt: endsAt },
+        endsAt: { gt: startsAt },
+      },
+      select: { id: true },
+    });
+    if (patientOverlap) {
+      throw new BadRequestException("Você já tem um horário neste período");
+    }
 
     const created = await this.prisma.appointment.create({
       data: {

@@ -37,6 +37,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       if (exception.code === "P2025") status = HttpStatus.NOT_FOUND;
       if (exception.code === "P2002") status = HttpStatus.CONFLICT;
       messages = [humanizePrismaError(exception)];
+    } else if (exception instanceof Prisma.PrismaClientValidationError) {
+      status = HttpStatus.BAD_REQUEST;
+      messages = ["Não foi possível consultar os dados. Atualize o banco e recarregue a página."];
     } else {
       messages = [defaultMessageForStatus(status)];
     }

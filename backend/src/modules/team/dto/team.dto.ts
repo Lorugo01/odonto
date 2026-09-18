@@ -1,13 +1,22 @@
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
   IsEmail,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
+  Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
+  ValidateNested,
 } from "class-validator";
+import { Type } from "class-transformer";
 import { Role, STAFF_ROLES } from "../../../common/utils/permissions.util";
 
 /** Papéis acumuláveis pela equipe. O papel PATIENT é gerido em Pacientes. */
@@ -87,4 +96,31 @@ export class UpdateTeamMemberDto {
   @IsString()
   @MaxLength(120)
   specialty?: string;
+}
+
+export class WorkingDayDto {
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  weekday!: number;
+
+  @IsBoolean()
+  enabled!: boolean;
+
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: "Informe o horário no formato HH:MM" })
+  start!: string;
+
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: "Informe o horário no formato HH:MM" })
+  end!: string;
+}
+
+export class SetHoursDto {
+  @IsArray()
+  @ArrayMinSize(7)
+  @ArrayMaxSize(7)
+  @ValidateNested({ each: true })
+  @Type(() => WorkingDayDto)
+  days!: WorkingDayDto[];
 }

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarPlus, Clock, Info, Send, Stethoscope, UserRound } from "lucide-react";
 import { api } from "../services/api";
-import { btn } from "../utils/buttonStyles";
-import { addDays, startOfToday, toLocalISODate } from "../utils/date";
+import { addDays, localDateKey, startOfToday, toLocalISODate } from "../utils/date";
 import { formatCents } from "../utils/money";
 import {
   Card,
@@ -16,7 +15,15 @@ import {
   useToast,
 } from "../components/ui";
 
-type Slot = { startsAt: string; endsAt: string };
+type SlotStatus = "free" | "busy" | "mine";
+type Slot = { startsAt: string; endsAt: string; status: SlotStatus };
+type DayMine = {
+  startsAt: string;
+  endsAt: string;
+  serviceName: string;
+  professionalName: string;
+};
+type Availability = { open?: boolean; slots: Slot[]; yourDay: DayMine[] };
 type Pro = { id: string; name: string; specialty?: string | null };
 type Treatment = {
   serviceId: string;
@@ -25,11 +32,28 @@ type Treatment = {
   durationMin: number;
   priceCents: number;
 };
+type AppointmentDay = { id: string; startsAt: string; status: string };
 
 const hourFmt = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const longDateFmt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" });
 
 const DAYS_AHEAD = 14;
+const ACTIVE_STATUSES = new Set(["REQUESTED", "SCHEDULED", "CONFIRMED"]);
+
+function chipClass(active: boolean, disabled?: boolean, tone: SlotStatus | "day" = "free") {
+  if (tone === "mine") {
+    return "border-primary bg-primary-soft text-primary cursor-default";
+  }
+  if (tone === "busy") {
+    return "border-line bg-canvas text-ink-soft line-through cursor-not-allowed";
+  }
+  if (disabled) {
+    return "border-line bg-surface text-ink opacity-50 cursor-not-allowed";
+  }
+  return active
+    ? "border-primary bg-primary text-white shadow-card"
+    : "border-line bg-surface text-ink hover:border-primary/40 hover:bg-primary-soft/40";
+}
 
 /** Chip de seleção (profissional, tratamento, dia, horário). */
 function Chip({
@@ -37,23 +61,24 @@ function Chip({
   onClick,
   children,
   disabled,
+  tone = "free",
+  title,
 }: {
   active: boolean;
-  onClick: () => void;
+  onClick?: () => void;
   children: React.ReactNode;
   disabled?: boolean;
+  tone?: SlotStatus | "day";
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      title={title}
       aria-pressed={active}
-      className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-        active
-          ? "border-primary bg-primary text-white shadow-card"
-          : "border-line bg-surface text-ink hover:border-primary/40 hover:bg-primary-soft/40"
-      }`}
+      className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${chipClass(active, disabled, tone)}`}
     >
       {children}
     </button>
@@ -72,6 +97,9 @@ export default function Agendar() {
   const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState(() => toLocalISODate(new Date()));
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [dayOpen, setDayOpen] = useState(true);
+  const [yourDay, setYourDay] = useState<DayMine[]>([]);
+  const [myAppointments, setMyAppointments] = useState<AppointmentDay[]>([]);
   const [note, setNote] = useState("");
   const [loadingPros, setLoadingPros] = useState(true);
   const [loadingTreatments, setLoadingTreatments] = useState(false);
@@ -80,13 +108,24 @@ export default function Agendar() {
   const [pending, setPending] = useState<Slot | null>(null);
   const [sending, setSending] = useState(false);
 
+  async function loadMyAppointments() {
+    const from = startOfToday();
+    const to = addDays(from, DAYS_AHEAD);
+    to.setHours(23, 59, 59, 999);
+    const { data } = await api.get<AppointmentDay[]>(
+      `/appointments?from=${from.toISOString()}&to=${to.toISOString()}`,
+    );
+    setMyAppointments(data.filter((a) => ACTIVE_STATUSES.has(a.status)));
+  }
+
   useEffect(() => {
-    api
-      .get<Pro[]>("/catalog/professionals")
-      .then((r) => {
+    Promise.all([
+      api.get<Pro[]>("/catalog/professionals").then((r) => {
         setPros(r.data);
-        if (r.data[0]) setProfessionalId(r.data[0].id);
-      })
+        if (r.data[0]) setProfessionalId((current) => current || r.data[0].id);
+      }),
+      loadMyAppointments(),
+    ])
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : "Erro ao carregar profissionais"),
       )
@@ -97,12 +136,13 @@ export default function Agendar() {
   useEffect(() => {
     if (!professionalId) return;
     setLoadingTreatments(true);
-    setSlots([]);
     api
       .get<Treatment[]>(`/treatments/offered?professionalId=${professionalId}`)
       .then((r) => {
         setTreatments(r.data);
-        setServiceId(r.data[0]?.serviceId ?? "");
+        setServiceId((current) =>
+          r.data.some((t) => t.serviceId === current) ? current : (r.data[0]?.serviceId ?? ""),
+        );
       })
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : "Erro ao carregar tratamentos"),
@@ -112,12 +152,12 @@ export default function Agendar() {
 
   async function loadSlots() {
     if (!serviceId || !professionalId || !date) return;
-    const { data } = await api.get<Slot[]>(
+    const { data } = await api.get<Availability>(
       `/availability?professionalId=${professionalId}&serviceId=${serviceId}&date=${date}`,
     );
-    // Esconde horários que já passaram no dia de hoje.
-    const now = Date.now();
-    setSlots(data.filter((s) => new Date(s.startsAt).getTime() > now));
+    setSlots(data.slots);
+    setDayOpen(data.open !== false);
+    setYourDay(data.yourDay);
   }
 
   useEffect(() => {
@@ -140,8 +180,7 @@ export default function Agendar() {
         patientNote: note.trim() || undefined,
       });
       setPending(null);
-      setNote("");
-      await loadSlots();
+      await Promise.all([loadSlots(), loadMyAppointments()]);
       toast.success("Solicitação enviada. A clínica vai confirmar o horário.");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Não foi possível enviar a solicitação");
@@ -156,6 +195,17 @@ export default function Agendar() {
   );
   const selectedPro = pros.find((p) => p.id === professionalId);
   const days = Array.from({ length: DAYS_AHEAD }).map((_, i) => addDays(startOfToday(), i));
+  const busyDays = useMemo(() => {
+    const keys = new Set<string>();
+    for (const a of myAppointments) keys.add(localDateKey(a.startsAt));
+    return keys;
+  }, [myAppointments]);
+
+  function slotTitle(s: Slot) {
+    if (s.status === "mine") return "Este horário já é seu";
+    if (s.status === "busy") return "Horário ocupado";
+    return "Solicitar este horário";
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -236,13 +286,24 @@ export default function Agendar() {
         <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {days.map((d) => {
             const iso = toLocalISODate(d);
+            const hasMine = busyDays.has(iso);
             return (
-              <Chip key={iso} active={date === iso} onClick={() => setDate(iso)}>
+              <Chip
+                key={iso}
+                active={date === iso}
+                onClick={() => setDate(iso)}
+                title={hasMine ? "Você já tem horário neste dia" : undefined}
+              >
                 <span className="flex min-w-[46px] flex-col items-center leading-tight">
                   <span className="text-xs uppercase opacity-75">
                     {d.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "")}
                   </span>
                   <span className="font-bold">{d.getDate()}</span>
+                  {hasMine ? (
+                    <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-warning" />
+                  ) : (
+                    <span className="mt-0.5 h-1.5 w-1.5" />
+                  )}
                 </span>
               </Chip>
             );
@@ -273,26 +334,56 @@ export default function Agendar() {
           }
           icon={<Clock size={18} />}
         />
+        {yourDay.length > 0 ? (
+          <div className="mb-3 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm text-ink">
+            Você já tem horário neste dia
+            {yourDay.map((a) => (
+              <span key={a.startsAt} className="block text-ink-muted">
+                {hourFmt.format(new Date(a.startsAt))} · {a.serviceName} com {a.professionalName}
+              </span>
+            ))}
+          </div>
+        ) : null}
         {loadingSlots ? (
           <div className="flex flex-wrap gap-2">
             {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-10 w-20" />
             ))}
           </div>
+        ) : !dayOpen ? (
+          <EmptyState
+            icon={<Clock size={28} />}
+            title="Profissional não atende neste dia"
+            description="Escolha outro dia ou outro profissional."
+          />
         ) : slots.length === 0 ? (
           <EmptyState
             icon={<Clock size={28} />}
-            title="Nenhum horário livre"
+            title="Nenhum horário neste dia"
             description="Escolha outro dia ou outro profissional."
           />
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {slots.map((s) => (
-              <Chip key={s.startsAt} active={false} onClick={() => setPending(s)}>
-                <span className="tabular-nums">{hourFmt.format(new Date(s.startsAt))}</span>
-              </Chip>
-            ))}
-          </div>
+          <>
+            <div className="flex flex-wrap gap-2">
+              {slots.map((s) => (
+                <Chip
+                  key={s.startsAt}
+                  active={s.status === "mine"}
+                  disabled={s.status !== "free"}
+                  tone={s.status}
+                  title={slotTitle(s)}
+                  onClick={s.status === "free" ? () => setPending(s) : undefined}
+                >
+                  <span className="tabular-nums">{hourFmt.format(new Date(s.startsAt))}</span>
+                </Chip>
+              ))}
+            </div>
+            <p className="mt-3 flex flex-wrap gap-3 text-xs text-ink-soft">
+              <span>Horário livre</span>
+              <span className="text-primary">Horário seu</span>
+              <span className="line-through">Horário ocupado</span>
+            </p>
+          </>
         )}
       </Card>
 
@@ -308,6 +399,18 @@ export default function Agendar() {
               {selectedPro?.name ?? ""}.
               <br />
               O horário fica reservado até a clínica confirmar.
+              {yourDay.length > 0 ? (
+                <>
+                  <br />
+                  Você já tem consulta neste dia
+                  {yourDay.map((a) => (
+                    <span key={a.startsAt}>
+                      {" "}
+                      ({hourFmt.format(new Date(a.startsAt))} · {a.serviceName}).
+                    </span>
+                  ))}
+                </>
+              ) : null}
             </>
           ) : undefined
         }

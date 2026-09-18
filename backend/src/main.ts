@@ -9,7 +9,17 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: false });
   // Fecha HTTP + Prisma ao receber SIGINT/SIGTERM (evita porta órfã no Windows)
   app.enableShutdownHooks();
-  app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          "img-src": ["'self'", "data:", "blob:", "https:", "http:"],
+        },
+      },
+    }),
+  );
   const isProduction = process.env.NODE_ENV === "production";
   const allowedOrigins = (process.env.CORS_ORIGINS ?? "")
     .split(",")

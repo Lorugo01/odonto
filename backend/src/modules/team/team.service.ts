@@ -9,7 +9,13 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuthUser } from "../../common/decorators/current-user.decorator";
 import { Role, STAFF_ROLES } from "../../common/utils/permissions.util";
-import { CreateTeamMemberDto, SetRolesDto, UpdateTeamMemberDto } from "./dto/team.dto";
+import { CreateTeamMemberDto, SetHoursDto, SetRolesDto, UpdateTeamMemberDto } from "./dto/team.dto";
+import {
+  defaultWeekHours,
+  hmToMinutes,
+  mergeWeekHours,
+  minutesToHm,
+} from "../../common/utils/hours.util";
 
 @Injectable()
 export class TeamService {
@@ -31,20 +37,34 @@ export class TeamService {
 
     const professionals = await this.prisma.professional.findMany({
       where: { clinicId: user.clinicId },
-      select: { userId: true, cro: true, specialty: true },
+      select: { id: true, userId: true, cro: true, specialty: true },
     });
+    const hoursByPro = await this.loadHoursByProfessional(professionals.map((p) => p.id));
     const proByUser = new Map(professionals.map((p) => [p.userId, p]));
 
     return [...byUser.entries()]
-      .map(([userId, data]) => ({
-        userId,
-        name: data.name,
-        email: data.email,
-        roles: data.roles,
-        cro: proByUser.get(userId)?.cro ?? null,
-        specialty: proByUser.get(userId)?.specialty ?? null,
-        isSelf: userId === user.userId,
-      }))
+      .map(([userId, data]) => {
+        const pro = proByUser.get(userId);
+        const hours = pro
+          ? mergeWeekHours(hoursByPro.get(pro.id) ?? []).map((d) => ({
+              weekday: d.weekday,
+              enabled: d.enabled,
+              start: minutesToHm(d.startMin),
+              end: minutesToHm(d.endMin),
+            }))
+          : [];
+        return {
+          userId,
+          professionalId: pro?.id ?? null,
+          name: data.name,
+          email: data.email,
+          roles: data.roles,
+          cro: pro?.cro ?? null,
+          specialty: pro?.specialty ?? null,
+          hours,
+          isSelf: userId === user.userId,
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }
 
@@ -212,7 +232,7 @@ export class TeamService {
       if (!professional && !cro) {
         throw new BadRequestException("Informe o CRO para conceder o papel de dentista");
       }
-      await tx.professional.upsert({
+      const pro = await tx.professional.upsert({
         where: { clinicId_userId: { clinicId, userId } },
         create: { clinicId, userId, cro: cro as string, specialty: profile.specialty?.trim() },
         update: {
@@ -220,6 +240,7 @@ export class TeamService {
           specialty: profile.specialty === undefined ? undefined : profile.specialty.trim() || null,
         },
       });
+      await this.ensureDefaultHours(tx, pro.id);
     }
 
     await tx.userClinicRole.deleteMany({
@@ -232,6 +253,73 @@ export class TeamService {
         update: {},
       });
     }
+  }
+
+  async setHours(user: AuthUser, targetUserId: string, dto: SetHoursDto) {
+    const professional = await this.prisma.professional.findUnique({
+      where: { clinicId_userId: { clinicId: user.clinicId, userId: targetUserId } },
+      select: { id: true },
+    });
+    if (!professional) throw new BadRequestException("Este integrante não está cadastrado como dentista");
+
+    const seen = new Set<number>();
+    const rows = dto.days.map((day) => {
+      if (seen.has(day.weekday)) throw new BadRequestException("Dia da semana duplicado");
+      seen.add(day.weekday);
+      const startMin = hmToMinutes(day.start);
+      const endMin = hmToMinutes(day.end);
+      if (startMin == null || endMin == null) {
+        throw new BadRequestException("Horário inválido");
+      }
+      if (day.enabled && startMin >= endMin) {
+        throw new BadRequestException("O horário de saída deve ser depois da entrada");
+      }
+      return {
+        professionalId: professional.id,
+        weekday: day.weekday,
+        enabled: day.enabled,
+        startMin,
+        endMin,
+      };
+    });
+    if (seen.size !== 7) throw new BadRequestException("Informe os 7 dias da semana");
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.professionalHours.deleteMany({ where: { professionalId: professional.id } });
+      await tx.professionalHours.createMany({ data: rows });
+    });
+    await this.audit(user, "UPDATE_HOURS", professional.id);
+    return this.findMember(user, targetUserId);
+  }
+
+  /**
+   * Lê o expediente à parte para a lista da equipe não quebrar se a tabela
+   * ainda não existir (migration pendente).
+   */
+  private async loadHoursByProfessional(professionalIds: string[]) {
+    const empty = new Map<string, Array<{ weekday: number; enabled: boolean; startMin: number; endMin: number }>>();
+    if (professionalIds.length === 0) return empty;
+    try {
+      const rows = await this.prisma.professionalHours.findMany({
+        where: { professionalId: { in: professionalIds } },
+      });
+      for (const row of rows) {
+        const list = empty.get(row.professionalId) ?? [];
+        list.push(row);
+        empty.set(row.professionalId, list);
+      }
+    } catch {
+      // Tabela ausente: a tela usa o expediente padrão até a migration ser aplicada.
+    }
+    return empty;
+  }
+
+  private async ensureDefaultHours(tx: Prisma.TransactionClient, professionalId: string) {
+    const count = await tx.professionalHours.count({ where: { professionalId } });
+    if (count > 0) return;
+    await tx.professionalHours.createMany({
+      data: defaultWeekHours().map((d) => ({ professionalId, ...d })),
+    });
   }
 
   /** Impede que a clínica fique sem nenhum administrador. */

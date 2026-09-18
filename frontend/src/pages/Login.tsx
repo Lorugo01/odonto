@@ -1,15 +1,19 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Loader2, Lock, Mail, Stethoscope } from "lucide-react";
+import { Loader2, Lock, Mail } from "lucide-react";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/auth";
 import { Usuario, isStaff } from "../types";
 import { btn } from "../utils/buttonStyles";
 import { ErrorState, Field, Input } from "../components/ui";
+import { ClinicMark } from "../components/brand/ClinicMark";
+import { rememberClinicSlug } from "../utils/brand";
 
 export default function Login() {
   const navigate = useNavigate();
   const setCredentials = useAuthStore((s) => s.setCredentials);
+  const publicClinic = useAuthStore((s) => s.publicClinic);
+  const clinicName = publicClinic?.name || "Acesse sua clínica";
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +29,7 @@ export default function Login() {
         senha,
       });
       setCredentials(data);
+      if (data.user.clinic?.slug) rememberClinicSlug(data.user.clinic.slug);
       navigate(isStaff(data.user) ? "/dashboard" : "/inicio", { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Falha no login");
@@ -37,10 +42,8 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-canvas p-4">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary text-white shadow-card">
-            <Stethoscope size={24} />
-          </span>
-          <h1 className="text-2xl font-bold text-ink">Dentista</h1>
+          <ClinicMark name={clinicName} logoUrl={publicClinic?.logoUrl} size={48} />
+          <h1 className="text-2xl font-bold text-ink">{clinicName}</h1>
           <p className="text-sm text-ink-muted">Acesse com suas credenciais</p>
         </div>
 

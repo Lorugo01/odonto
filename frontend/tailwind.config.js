@@ -7,9 +7,9 @@ export default {
         // `canvas` é o fundo da aplicação, `surface` são os cards/painéis,
         // `line` as bordas e `ink` a tinta (texto).
         primary: {
-          DEFAULT: "#0D9488",
-          hover: "#0F766E",
-          soft: "#CCFBF1",
+          DEFAULT: "var(--brand)",
+          hover: "var(--brand-hover)",
+          soft: "var(--brand-soft)",
         },
         secondary: "#0F766E",
         canvas: "#F1F5F9",

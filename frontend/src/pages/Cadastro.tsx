@@ -1,15 +1,20 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Loader2, UserPlus } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/auth";
 import { Usuario } from "../types";
 import { btn } from "../utils/buttonStyles";
 import { ErrorState, Field, Input } from "../components/ui";
+import { ClinicMark } from "../components/brand/ClinicMark";
+import { rememberClinicSlug, resolveClinicSlug } from "../utils/brand";
 
 export default function Cadastro() {
   const navigate = useNavigate();
   const setCredentials = useAuthStore((s) => s.setCredentials);
+  const publicClinic = useAuthStore((s) => s.publicClinic);
+  const clinicName = publicClinic?.name || "Clínica";
+  const clinicSlug = publicClinic?.slug || resolveClinicSlug();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -25,10 +30,11 @@ export default function Cadastro() {
         name,
         email,
         senha,
-        clinicSlug: "sorriso",
+        clinicSlug,
         consent: true,
       });
       setCredentials(data);
+      if (data.user.clinic?.slug) rememberClinicSlug(data.user.clinic.slug);
       navigate("/inicio", { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Falha no cadastro");
@@ -41,12 +47,10 @@ export default function Cadastro() {
     <div className="flex min-h-screen items-center justify-center bg-canvas p-4">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary text-white shadow-card">
-            <UserPlus size={24} />
-          </span>
+          <ClinicMark name={clinicName} logoUrl={publicClinic?.logoUrl} size={48} />
           <h1 className="text-2xl font-bold text-ink">Cadastro do paciente</h1>
           <p className="text-center text-sm text-ink-muted">
-            Ao continuar você aceita o termo de uso (Clínica Sorriso).
+            Ao continuar você aceita o termo de uso ({clinicName}).
           </p>
         </div>
 

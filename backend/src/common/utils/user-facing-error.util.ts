@@ -21,6 +21,9 @@ export function humanizePrismaError(error: Prisma.PrismaClientKnownRequestError)
       return "Este registro já existe.";
     case "P2025":
       return "Registro não encontrado ou já foi removido.";
+    case "P2021":
+    case "P2022":
+      return "O banco está desatualizado. Rode as migrations e tente de novo.";
     default:
       return "Não foi possível salvar os dados.";
   }

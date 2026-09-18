@@ -8,6 +8,7 @@ import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
 import { PrismaService } from "../../prisma/prisma.service";
 import { primaryRole } from "../../common/utils/permissions.util";
+import { clinicSettingsDto, loadClinicBranding } from "../clinic/clinic.util";
 import { LoginDto, RegisterPatientDto } from "./dto/auth.dto";
 
 @Injectable()
@@ -78,13 +79,17 @@ export class AuthService {
     const active = staff ?? user.roles[0];
     const clinicId = active?.clinicId ?? "";
     const roles = user.roles.filter((r) => r.clinicId === clinicId).map((r) => r.role);
+    const clinic = active?.clinic;
+    const branding = clinicId ? await this.loadBranding(clinicId, clinic) : null;
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       isPlatformAdmin: user.isPlatformAdmin,
       clinicId,
-      clinicName: active?.clinic.name ?? "",
+      clinicName: branding?.name ?? clinic?.name ?? "",
+      /** Identidade visual e dados comerciais da clínica ativa. */
+      clinic: branding,
       /** Papéis acumulados na clínica ativa; base das permissões no cliente. */
       roles,
       role: primaryRole(roles),
@@ -95,5 +100,18 @@ export class AuthService {
         role: r.role,
       })),
     };
+  }
+
+  private async loadBranding(
+    clinicId: string,
+    clinic?: { id: string; name: string; slug: string; timezone: string } | null,
+  ) {
+    try {
+      const row = await loadClinicBranding(this.prisma, { id: clinicId });
+      if (row) return row;
+    } catch {
+      /* Prisma Client antigo ou migration ainda não aplicada. */
+    }
+    return clinic ? clinicSettingsDto(clinic) : null;
   }
 }

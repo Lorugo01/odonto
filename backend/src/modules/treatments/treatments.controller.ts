@@ -1,10 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Put, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { TreatmentsService } from "./treatments.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { AuthUser, CurrentUser } from "../../common/decorators/current-user.decorator";
-import { UpsertTreatmentDto } from "./dto/treatments.dto";
+import { CreateTreatmentDto, UpsertTreatmentDto } from "./dto/treatments.dto";
 
 @Controller("treatments")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -14,14 +14,24 @@ export class TreatmentsController {
   /** Tela de configuração: catálogo + ajustes do profissional. */
   @Get()
   @Roles("CLINIC_ADMIN", "DENTIST")
-  list(@CurrentUser() user: AuthUser, @Query("professionalId") professionalId?: string) {
-    return this.treatments.list(user, professionalId);
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query("professionalId") professionalId?: string,
+    @Query("includeInactive") includeInactive?: string,
+  ) {
+    return this.treatments.list(user, professionalId, includeInactive === "true");
   }
 
   /** Lista usada na solicitação de consulta; visível também ao paciente. */
   @Get("offered")
   offered(@CurrentUser() user: AuthUser, @Query("professionalId") professionalId: string) {
     return this.treatments.offered(user, professionalId);
+  }
+
+  @Post()
+  @Roles("CLINIC_ADMIN", "DENTIST")
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateTreatmentDto) {
+    return this.treatments.create(user, dto);
   }
 
   @Put()

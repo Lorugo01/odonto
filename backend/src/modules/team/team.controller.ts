@@ -4,7 +4,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { AuthUser, CurrentUser } from "../../common/decorators/current-user.decorator";
-import { CreateTeamMemberDto, SetRolesDto, UpdateTeamMemberDto } from "./dto/team.dto";
+import { CreateTeamMemberDto, SetHoursDto, SetRolesDto, UpdateTeamMemberDto } from "./dto/team.dto";
 
 /** Gestão de acessos da clínica: apenas o administrador altera papéis. */
 @Controller("team")
@@ -39,6 +39,15 @@ export class TeamController {
     @Body() dto: UpdateTeamMemberDto,
   ) {
     return this.team.update(user, userId, dto);
+  }
+
+  @Patch(":userId/hours")
+  setHours(
+    @CurrentUser() user: AuthUser,
+    @Param("userId") userId: string,
+    @Body() dto: SetHoursDto,
+  ) {
+    return this.team.setHours(user, userId, dto);
   }
 
   @Delete(":userId")

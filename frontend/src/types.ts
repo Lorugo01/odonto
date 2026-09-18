@@ -1,3 +1,5 @@
+import { ClinicBranding } from "./utils/brand";
+
 export type Role = "CLINIC_ADMIN" | "DENTIST" | "RECEPTION" | "PATIENT";
 
 export type Usuario = {
@@ -7,6 +9,8 @@ export type Usuario = {
   isPlatformAdmin: boolean;
   clinicId: string;
   clinicName: string;
+  /** Identidade visual da clínica ativa (logo, cor, timbre). */
+  clinic?: ClinicBranding | null;
   /** Papel de maior precedência, usado só para exibição. */
   role: Role;
   /** Papéis acumulados na clínica ativa; é a base das permissões. */

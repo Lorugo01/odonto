@@ -5,6 +5,7 @@ export type ServiceBase = {
   description: string | null;
   durationMin: number;
   priceCents: number;
+  active?: boolean;
 };
 
 /** Ajustes do dentista para o tratamento; campos nulos herdam o catálogo. */
@@ -28,6 +29,8 @@ export type ResolvedTreatment = {
   active: boolean;
   /** Valores do catálogo, exibidos como referência na tela de ajuste. */
   catalog: { description: string | null; durationMin: number; priceCents: number };
+  /** false quando o administrador arquivou o tipo no catálogo. */
+  catalogActive: boolean;
   /**
    * Ajustes brutos do dentista, com `null` onde ele optou por herdar. A tela
    * precisa deles para preservar a personalização ao ativar ou desativar.
@@ -57,6 +60,7 @@ export function resolveTreatment(
       durationMin: service.durationMin,
       priceCents: service.priceCents,
     },
+    catalogActive: service.active !== false,
     own: override
       ? {
           description: override.description,

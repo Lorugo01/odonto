@@ -13,6 +13,7 @@ import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { CatalogModule } from "./modules/catalog/catalog.module";
 import { TreatmentsModule } from "./modules/treatments/treatments.module";
 import { TeamModule } from "./modules/team/team.module";
+import { ClinicModule } from "./modules/clinic/clinic.module";
 import { HealthController } from "./common/health.controller";
 
 @Module({
@@ -30,6 +31,7 @@ import { HealthController } from "./common/health.controller";
     CatalogModule,
     TreatmentsModule,
     TeamModule,
+    ClinicModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
